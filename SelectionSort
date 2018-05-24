@@ -1,0 +1,187 @@
+.data
+	input: .asciiz "input.txt"
+	output: .asciiz "output.txt"
+	arr: .word 0:1000		#array[1000] = {0,...,0}
+	tb1: .asciiz "N: "
+	buffer: .space 12000
+.text
+#Cac quy dinh can tuan thu
+#	$s0 = N
+#	$s1 = i
+#	$s2 = j
+#	$s3 = buffer
+#	$s4 = count
+#	$s7 = Gia tri tra ve cua Stoi
+
+###################################################ReadFile###################################################
+Read:
+	#Mo file de doc
+ 	li   $v0, 13		#open file
+ 	la   $a0, input		#name of file
+ 	li   $a1, 0		#0: read | 1: write
+ 	syscall
+	move $s7, $v0		#save descriptor
+
+	#Bat dau doc file
+	add $a0, $zero, $s7	#save $a0 = file descriptor
+	li $v0, 14		#Read file opened
+	addi $sp, $sp, -11000	#1 int co toi da 10 ki tu -> 1000 int = 10000 byte
+	la $a1, 0($sp)
+	li $a2, 10000		#Chi su dung 10000 byte
+	syscall
+	addi $sp, $sp, 11000	#Tra ve stack ban dau va du ra 1000 byte su dung viec khac
+
+	#Lay gia tri cua n
+	add $s7, $zero, $zero	#Gia tri tra ve cua Stoi
+	jal Stoi
+	add $s0, $zero, $s7	#Quy dinh $s0 = N
+	addi $a1, $a1, 1
+	li $s1, 0		# i = 0
+For_read:	#for(i;i<n;i++)
+	add $s7, $zero, $zero	#Gia tri tra ve cua ham Stoi
+	beq $s1, $s0, Exit_read
+	jal Stoi
+	li $t1, 4
+	mult $t1,$s1
+	mflo $t1
+	sw $s7, arr($t1)	#Set $s7 vao arr[i]
+	addi $s1, $s1, 1	#i++
+	j For_read
+Exit_read:
+	#Close input
+	li   $v0, 16      
+	move $a0, $s7      
+	syscall 
+
+###################################################InsertionSort###################################################
+	li $t0, 0
+	li $t1, 0
+	li $t2, 0
+	li $t3, 0
+	li $t4, 0
+	li $t5, 0
+	li $t6, 0
+	li $t7, 0
+selectionSort:
+#Khoi tao cac gia tri
+	add $t0,$zero,$s0	#n
+	subi $t0,$t0,1		# t0=n-1
+	li $s1,0		# t1=i=0
+	la $t2,arr		#t2 luu dia chi cua mang
+
+loop1_Sort:
+	beq $s1,$t0,Write	#i=n-1 nhay den ham Output
+	move $t3,$s1		# t3= min =i
+	addi $s2,$s1,1		# t4=j=i+1
+	la $t5,($t2)		# t5= dia chi a[min]
+	la $t6,4($t2)		# t6=dia chi a[j]
+
+loop2_Sort:
+	bgt $s2,$t0,exit_loop1	#Neu j>n-1 quay lai loop1_Sort
+	lw $s5,($t5)		#s5=a[min]
+	lw $s6,($t6)		#s6=a[j]
+	bge $s6,$s5,exit_Control#Neu a[j]>=a[min] nhay toi ham exit_Control
+	move $t3,$s2		#min=j
+	move $t5,$t6		#dia chi cua a[min]= dia chi a[j]
+
+exit_Control:
+	addi $s2,$s2,1		#j++
+	addi $t6,$t6,4		#nhay den dia chi a[j+1]
+
+	j loop2_Sort
+
+exit_loop1:
+	lw $v0,($t2)		#v0=a[i]
+	lw $v1,($t5)		#v1=a[min]
+#tien hanh hoan vi
+move $t7,$v0
+move $v0,$v1
+move $v1,$t7
+sw $v0,($t2)
+sw $v1,($t5)
+addi $t2,$t2,4
+addi $s1,$s1,1
+
+j loop1_Sort
+
+###################################################WriteFile###################################################
+Write:
+	#Open file output
+ 	li   $v0, 13
+ 	la   $a0, output
+ 	li   $a1, 1	#write
+ 	syscall
+	move $s7, $v0
+	li $s1, 0	#i = 0
+	la $s3, buffer	#$s3 = buffer
+	li $s4, 0	#count = 0
+For_write:	#for(i; i<n; i++)
+	beq $s0, $s1, End_write
+	jal to_string
+Sw_a_int_to_buffer:	#while(stack[*] != -1):
+	lw $t0, 0($sp)		#Lay gia tri dau trong stack
+	addi $sp, $sp, 4	#Tro den stack tiep theo
+	beq $t0, -1, End_int
+	sb $t0, 0($s3)		#Gan gia tri trong stack vao buffer
+	addi $s3, $s3, 1	#address buffer++
+	addi $s4, $s4, 1	#count++
+	j Sw_a_int_to_buffer
+End_int:	#End_while:
+	li $t1, ' '		#write ' ' into buffer
+	sb $t1, ($s3)		#
+	addi $s3, $s3, 1	#address buffer++
+	addi $s4, $s4, 1	#count++
+	addi $s1, $s1, 1	#i++
+	j For_write
+End_write:
+	#Write into opened file
+	li $v0, 15
+	move $a0, $s7
+	la $a1, buffer		#write buffer into file
+	addi $s4, $s4, -1	#Delete last ' '
+	la $a2, ($s4)		#Set number of characters to write = count
+	syscall
+	j Exit
+
+###################################################SupportFunction###################################################
+#Stoi
+Stoi:
+	lb $t0, 0($a1)		#Lay tung char
+	slti $t2, $t0, 58        # *str <= '9'
+   	slti $t3, $t0, '0'       # *str < '0'
+	beq  $t2, $zero, Exit_Stoi
+  	bne  $t3, $zero, Exit_Stoi
+
+	sll $t1, $s7, 1		#$s7 * 2
+	sll $s7, $s7, 3		#$s7 * 8
+	add $s7, $s7, $t1	#$s7 = 10 * $s7
+	addi $t0, $t0, -48	#Tru di '0'
+	add $s7, $s7, $t0	#$s7 = $s7 + gia tri cua char($t0)
+	addi $a1, $a1, 1
+	j Stoi
+Exit_Stoi:
+	addi $a1, $a1, 1	#Bo qua dau ' '
+	jr $ra
+#To_string
+to_string:
+	addi $sp, $sp, -4	#Su dung linh canh
+	li $t0, -1		#
+	sw $t0, 0($sp)		#
+	li $t0, 4
+	mult $t0, $s1		#Truy cap mang la boi so cua 4: i = i*4
+	mflo $t0
+	lw $t0, arr($t0)	#Gan $t0 = a[i]
+for_to_string:		#While(a/10 !=0 || a%10 !=0):
+	div $t0, $t0, 10	#Chia a[i] cho 10
+	mflo $t0		#Lay phan nguyen
+	mfhi $t1		#Lay phan du
+	addi $t1, $t1, 48	#Chuyen 1 int thanh 1 char
+	addi $sp, $sp, -4	#Bo char do vao stack
+	sw $t1, 0($sp)
+	beqz $t0, Exit_to_string	#Phan Nguyen = 0
+	j for_to_string
+Exit_to_string:
+	jr $ra
+Exit:
+	li $v0, 10		#End project
+	syscall
